@@ -6,10 +6,17 @@ android {
         applicationId 'local.pin'
         minSdk 31
         targetSdk 36
-        versionCode 5
-        versionName '2.1'
+        versionCode 6
+        versionName '2.2-preview'
+        manifestPlaceholders = [appLabel: '点位']
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { release { minifyEnabled false } }
+    buildTypes {
+        debug {
+            applicationIdSuffix '.preview'
+            manifestPlaceholders = [appLabel: '点位·运动预览']
+        }
+        release { minifyEnabled false }
+    }
 }
 // No third-party runtime libraries, analytics, ad SDKs or JavaScript.
