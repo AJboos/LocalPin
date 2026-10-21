@@ -34,9 +34,19 @@ $sources = @(
     'app/src/main/java/local/pin/MapMath.java',
     'app/src/main/java/local/pin/PositionCheck.java',
     'app/src/main/java/local/pin/SimulationEngine.java',
+    'app/src/main/java/local/pin/RoutePlan.java',
+    'app/src/main/java/local/pin/MotionSession.java',
+    'app/src/main/java/local/pin/SubmittedFixes.java',
+    'app/src/main/java/local/pin/RouteEditor.java',
+    'app/src/main/java/local/pin/MapSource.java',
     'tests/MapMathTest.java',
     'tests/PositionCheckTest.java',
-    'tests/SimulationEngineTest.java'
+    'tests/SimulationEngineTest.java',
+    'tests/RouteMotionTest.java',
+    'tests/MotionEngineTest.java',
+    'tests/SubmittedFixesTest.java',
+    'tests/RouteEditorTest.java',
+    'tests/MapSourceTest.java'
 ) | ForEach-Object {
     $source = Join-Path $PSScriptRoot $_
     if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
@@ -66,14 +76,22 @@ try {
     $compileArguments = @('-proc:none', '-encoding', 'UTF-8', '--release', '17',
                           '-classpath', $classes, '-d', $classes) + @($sources)
     Invoke-CheckedNative -Executable $javac -NativeArguments $compileArguments -Step 'Pure JVM source compilation'
-    foreach ($testMain in @('local.pin.MapMathTest', 'local.pin.PositionCheckTest', 'local.pin.SimulationEngineTest')) {
+    foreach ($testMain in @('local.pin.MapMathTest', 'local.pin.PositionCheckTest', 'local.pin.SimulationEngineTest',
+                          'local.pin.RouteMotionTest', 'local.pin.MotionEngineTest', 'local.pin.SubmittedFixesTest',
+                          'local.pin.RouteEditorTest', 'local.pin.MapSourceTest')) {
         Invoke-CheckedNative -Executable $java -NativeArguments @('-ea', '-cp', $classes, $testMain) -Step $testMain
     }
-    Write-Output ('All three JVM test mains passed. Classes: ' + $classes)
+    Write-Output ('All JVM test mains passed. Classes: ' + $classes)
     Write-Output 'These JVM tests do not verify Android or other apps.'
 }
 finally {
-    # Null also restores a previously absent environment variable.
-    [Environment]::SetEnvironmentVariable('JAVA_HOME', $previousJavaHome, 'Process')
-    [Environment]::SetEnvironmentVariable('PATH', $previousPath, 'Process')
+    # PowerShell may coerce null to an empty .NET string; remove absent variables explicitly.
+    if ($null -eq $previousJavaHome) {
+        Remove-Item -LiteralPath 'Env:JAVA_HOME' -ErrorAction SilentlyContinue
+    }
+    else { [Environment]::SetEnvironmentVariable('JAVA_HOME', $previousJavaHome, 'Process') }
+    if ($null -eq $previousPath) {
+        Remove-Item -LiteralPath 'Env:PATH' -ErrorAction SilentlyContinue
+    }
+    else { [Environment]::SetEnvironmentVariable('PATH', $previousPath, 'Process') }
 }

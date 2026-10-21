@@ -1,4 +1,6 @@
-# 恢复与验证记录
+# 2.1 恢复与验证记录
+
+以下是 2.1 源码恢复时的历史记录，不是路线预览版的验证结果。2.2-preview 的记录见 [MOTION_VERIFICATION.md](MOTION_VERIFICATION.md)。
 
 日期：2026-10-21。
 

@@ -4,10 +4,15 @@ package local.pin;
 final class SimulationEngine {
     static final int DEFAULT_INTERVAL=200;
     static final class Point {
-        final double latitude,longitude;
-        Point(double lat,double lon) {
+        final double latitude,longitude,speedMps,bearingDegrees;
+        Point(double lat,double lon) { this(lat,lon,Double.NaN,Double.NaN); }
+        Point(double lat,double lon,double speed,double bearing) {
             if(!MapMath.valid(lat,lon))throw new IllegalArgumentException("Invalid point");
-            latitude=lat;longitude=lon;
+            if(!Double.isNaN(speed)&&(!Double.isFinite(speed)||speed<0||speed>Float.MAX_VALUE))
+                throw new IllegalArgumentException("Invalid speed");
+            if(!Double.isNaN(bearing)&&!Double.isFinite(bearing))throw new IllegalArgumentException("Invalid bearing");
+            latitude=lat;longitude=lon;speedMps=speed;
+            bearingDegrees=Double.isNaN(bearing)?Double.NaN:MapMath.wrap(bearing,360);
         }
     }
     interface Backend {
@@ -22,12 +27,16 @@ final class SimulationEngine {
     static final class State {
         final boolean running,cleanupSucceeded;
         final Point point;
+        final RoutePlan routePlan;
+        final MotionSession.Sample motion;
         final int intervalMillis;
         final long writes,lastWriteMillis,recoveredPauseMillis;
         final String error;
-        State(boolean running,boolean clean,Point point,int interval,long writes,long last,long pause,String error) {
+        State(boolean running,boolean clean,Point point,int interval,long writes,long last,long pause,String error,
+              RoutePlan routePlan,MotionSession.Sample motion) {
             this.running=running;cleanupSucceeded=clean;this.point=point;intervalMillis=interval;
             this.writes=writes;lastWriteMillis=last;recoveredPauseMillis=pause;this.error=error;
+            this.routePlan=routePlan;this.motion=motion;
         }
     }
     private final Backend backend;
@@ -36,6 +45,9 @@ final class SimulationEngine {
     private final Observer observer;
     private boolean running,opened,cleanupSucceeded=true;
     private Point target;
+    private RoutePlan routePlan;
+    private MotionSession motion;
+    private MotionSession.Sample motionSample;
     private int interval=DEFAULT_INTERVAL;
     private long writes,lastWriteMillis,pauseMillis;
     private String error="";
@@ -50,7 +62,17 @@ final class SimulationEngine {
     synchronized State state(){return state;}
     synchronized void apply(Point point,int requestedInterval) {
         if(point==null)throw new IllegalArgumentException("Missing point");
-        scheduler.remove(tick);target=point;interval=validInterval(requestedInterval);error="";
+        scheduler.remove(tick);routePlan=null;motion=null;motionSample=null;
+        target=point;interval=validInterval(requestedInterval);error="";
+        startOrReplace();
+    }
+    synchronized void applyRoute(RoutePlan plan,int requestedInterval) {
+        if(plan==null)throw new IllegalArgumentException("Missing route");
+        MotionSession next=new MotionSession(plan,clock.elapsedMillis(),clock.elapsedNanos()^clock.utcMillis());
+        scheduler.remove(tick);routePlan=plan;motion=next;motionSample=null;
+        interval=validInterval(requestedInterval);error="";startOrReplace();
+    }
+    private void startOrReplace() {
         try {
             boolean first=!opened;
             if(first){
@@ -69,10 +91,28 @@ final class SimulationEngine {
         catch(RuntimeException failure){fail(failure);}
     }
     private void write() {
+        if(motion!=null){motionSample=motion.update(clock.elapsedMillis());target=motionSample.point;}
         backend.write(target,clock.utcMillis(),clock.elapsedNanos());
         long now=clock.elapsedMillis();
         if(writes>0&&now-lastWriteMillis>5000)pauseMillis=now-lastWriteMillis;
         lastWriteMillis=now;writes++;
+    }
+    synchronized void pauseMotion() {
+        if(!running||motion==null)return;
+        try{motionSample=motion.pause(clock.elapsedMillis());write();publish();}
+        catch(RuntimeException failure){fail(failure);}
+    }
+    synchronized void resumeMotion() {
+        if(!running||motion==null)return;
+        try{motionSample=motion.resume(clock.elapsedMillis());write();publish();}
+        catch(RuntimeException failure){fail(failure);}
+    }
+    synchronized void reconfigureInterval(int requested) {
+        interval=validInterval(requested);
+        if(running){
+            try{scheduler.remove(tick);scheduler.post(tick,interval);publish();}
+            catch(RuntimeException failure){fail(failure);}
+        }else publish();
     }
     synchronized void stop(){running=false;scheduler.remove(tick);close();publish();}
     private void fail(RuntimeException failure) {
@@ -83,6 +123,6 @@ final class SimulationEngine {
         try{cleanupSucceeded=backend.close();}catch(RuntimeException failure){cleanupSucceeded=false;}
         opened=false;
     }
-    private State snapshot(){return new State(running,cleanupSucceeded,target,interval,writes,lastWriteMillis,pauseMillis,error);}
+    private State snapshot(){return new State(running,cleanupSucceeded,target,interval,writes,lastWriteMillis,pauseMillis,error,routePlan,motionSample);}
     private void publish(){state=snapshot();observer.changed(state);}
 }
