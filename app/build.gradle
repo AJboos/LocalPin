@@ -1,0 +1,15 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'local.pin'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'local.pin'
+        minSdk 31
+        targetSdk 36
+        versionCode 5
+        versionName '2.1'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+}
+// No third-party runtime libraries, analytics, ad SDKs or JavaScript.

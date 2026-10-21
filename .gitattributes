@@ -1,0 +1,3 @@
+# Preserve recovered source bytes, including original line endings.
+# This also keeps the recorded SHA-256 checks valid after cloning.
+* -text

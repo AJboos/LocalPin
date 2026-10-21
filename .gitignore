@@ -1,0 +1,39 @@
+# Signing material and local credentials
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.key
+*.pem
+key.properties
+keystore.properties
+signing.properties
+.env
+.env.*
+
+# Local tools, SDK paths, IDE state, build outputs
+local.properties
+.gradle/
+.idea/
+*.iml
+**/build/
+.build/
+.tests/
+dist/
+tools/
+*.apk
+*.aab
+*.apks
+*.idsig
+*.class
+*.dex
+*.log
+
+# Device data and recovery work are never publication inputs
+.recovery/
+captures/
+screenshots/
+device-data/
+*.hprof
+.DS_Store
+Thumbs.db
