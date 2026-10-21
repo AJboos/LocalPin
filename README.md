@@ -1,8 +1,14 @@
-# 点位 / LocalPin 2.1
+# 点位 LocalPin：安卓模拟定位与地图选点工具（免 Root）
 
-作者：**AJ_boos**。
+作者：**AJ_boos** · 应用版本：**2.1**。
 
-在地图上选点，通过 Android 开发者选项提供的模拟位置功能持续提交测试位置。无需输入经纬度，也可搜索地点后在地图上点选。
+点位是一款支持地图选点的**安卓模拟定位工具**，可用于虚拟定位、GPS 模拟和 Android 应用定位测试。在 OpenStreetMap 地图上搜索或点击目标地点，即可通过系统模拟位置接口持续提交选点，无需手动查找和输入经纬度。
+
+**无需 Root，需要在开发者选项中将“点位”选为模拟位置信息应用。** 最低支持 Android 12 / API 31；已有 Android 16 环境的历史测试记录。它适合学习 Android 定位接口、调试位置功能和进行地图选点实验。
+
+LocalPin is a **no-root Android mock location app**, **GPS simulator** and **OpenStreetMap map picker**. Choose a location on the map to simulate GPS coordinates for location testing, without entering latitude and longitude manually. This fake GPS tool uses Android's standard mock-location APIs and requires selecting LocalPin as the mock location app in Developer options.
+
+Source available for noncommercial use. Commercial use requires a separate paid written license.
 
 **非商业用途免费；商业使用必须事先取得权利人的书面付费授权。** 源码可供查看和按许可修改，但采用非商业许可，不是 OSI 定义的开源软件。完整条款见 [LICENSE](LICENSE)，商业授权说明见 [COMMERCIAL.md](COMMERCIAL.md)。
 
