@@ -1,13 +1,14 @@
 package local.pin;
 
-/** Monotonic active-time integration, with no catch-up movement after a scheduling gap. */
+/** Monotonic active-time integration with at most five seconds of movement per delivery. */
 final class MotionSession {
     private static final long NODE_MILLIS=5000;
+    private static final long MAX_ADVANCE_MILLIS=5000;
     final RoutePlan plan;
     private final long seed;
     private long lastMillis,activeMillis,prefixNode;
     private double prefixMeters,travelledMeters;
-    private boolean paused,autoPaused,completed;
+    private boolean paused,completed;
 
     static final class Sample {
         final SimulationEngine.Point point;
@@ -30,8 +31,11 @@ final class MotionSession {
         checkTime(nowMillis);
         long delta=nowMillis-lastMillis;lastMillis=nowMillis;
         if(paused||completed)return snapshot();
-        if(delta>NODE_MILLIS){paused=true;autoPaused=true;return snapshot();}
-        long next=activeMillis>Long.MAX_VALUE-delta?Long.MAX_VALUE:activeMillis+delta;
+        // Android may repeatedly delay background delivery. Advance by a bounded
+        // step so sparse ticks still move, without replaying a long wall-time gap
+        // or requiring manual resume. Each delivery establishes a fresh timebase.
+        long advance=Math.min(delta,MAX_ADVANCE_MILLIS);
+        long next=activeMillis>Long.MAX_VALUE-advance?Long.MAX_VALUE:activeMillis+advance;
         if(plan.durationLimitMillis>0)next=Math.min(next,plan.durationLimitMillis);
         double nextDistance=distanceAt(next);
         double end=plan.closed?Double.POSITIVE_INFINITY:plan.lengthMeters;
@@ -61,7 +65,7 @@ final class MotionSession {
         checkTime(nowMillis);
         if(!paused)return update(nowMillis);
         lastMillis=nowMillis;
-        if(!completed){paused=false;autoPaused=false;}
+        if(!completed)paused=false;
         return snapshot();
     }
 
@@ -102,6 +106,6 @@ final class MotionSession {
         double bearing=plan.bearingAt(travelledMeters);
         SimulationEngine.Point coordinate=plan.pointAt(travelledMeters);
         SimulationEngine.Point point=new SimulationEngine.Point(coordinate.latitude,coordinate.longitude,speed,bearing);
-        return new Sample(point,travelledMeters,activeMillis,speed,bearing,paused,autoPaused,completed);
+        return new Sample(point,travelledMeters,activeMillis,speed,bearing,paused,false,completed);
     }
 }

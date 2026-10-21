@@ -161,22 +161,66 @@ public final class RouteMotionTest {
         near(still.travelledMeters,8,0,"resume resets timebase without a jump");
         check(before.travelledMeters==4&&before.activeMillis==1000,"previous active sample unchanged");
 
-        MotionSession gap=new MotionSession(plan,0,0);
+        MotionSession gap=new MotionSession(route(line(),false,4,4,20000,0),0,0);
         MotionSession.Sample sample=gap.update(5000);
         check(!sample.paused&&sample.activeMillis==5000,"exact 5s scheduling delay permitted");
         sample=gap.update(10001);
-        check(sample.paused&&sample.autoPaused&&!sample.completed,"gap over 5s auto pauses");
-        near(sample.travelledMeters,20,0,"gap discards all elapsed gap movement");
-        check(sample.activeMillis==5000,"gap does not consume active-time limit");
-        near(sample.point.speedMps,0,0,"auto pause publishes stationary point");
-        sample=gap.resume(200000);
-        check(!sample.paused&&!sample.autoPaused,"resume clears automatic-pause marker");
-        sample=gap.update(205000);
-        check(sample.completed&&sample.activeMillis==10000,"active time completion after resume");
-        near(sample.travelledMeters,40,0,"active time excludes gap and paused wait");
-        rejected(()->gap.update(204999),"backwards monotonic clock rejected");
+        check(!sample.paused&&!sample.autoPaused&&!sample.completed,"gap over 5s keeps motion enabled");
+        near(sample.travelledMeters,40,0,"5001ms gap advances at most five seconds of movement");
+        check(sample.activeMillis==10000,"5001ms gap counts only the bounded five-second step");
+        near(sample.point.speedMps,4,0,"gap retains configured moving speed without artificial pause");
+        sample=gap.update(10201);
+        near(sample.travelledMeters,40.8,1e-12,"next normal tick continues without manual resume");
+        check(sample.activeMillis==10200&&!sample.paused&&!sample.autoPaused,"normal update counts only its own interval");
+        sample=gap.update(200000);
+        check(sample.activeMillis==15200&&!sample.completed&&!sample.paused,"another long gap counts five seconds without latching pause");
+        near(sample.travelledMeters,60.8,1e-12,"repeated long gap has bounded movement instead of freezing");
+        sample=gap.update(204800);
+        check(sample.completed&&sample.activeMillis==20000,"duration finishes after enough bounded active time");
+        near(sample.travelledMeters,80,0,"duration excludes background time beyond each five-second cap");
+        sample=gap.update(500000);
+        check(sample.completed&&!sample.paused&&!sample.autoPaused&&sample.activeMillis==20000,"completed state unchanged by later interruption");
+        near(sample.point.speedMps,0,0,"completed point remains stationary after long gap");
+        rejected(()->gap.update(499999),"backwards monotonic clock rejected");
         rejected(()->new MotionSession(null,0,0),"missing plan rejected");
         rejected(()->new MotionSession(plan,-1,0),"negative clock rejected");
+
+        MotionSession shortGap=new MotionSession(plan,1000,0);
+        sample=shortGap.update(2200);
+        check(sample.activeMillis==1200&&!sample.paused&&!sample.autoPaused,"ordinary short background delay integrates normally");
+        near(sample.travelledMeters,4.8,1e-12,"short background delay follows physical elapsed time");
+
+        MotionSession sparse=new MotionSession(route(line(),false,4,4,0,0),0,0);
+        for(int tick=1;tick<=5;tick++){
+            sample=sparse.update(tick*8000L);
+            check(!sample.paused&&!sample.autoPaused&&!sample.completed,"repeated 8s delivery never needs manual recovery");
+            check(sample.activeMillis==tick*5000L,"each sparse delivery contributes at most five seconds");
+            near(sample.travelledMeters,tick*20,1e-12,"repeated sparse delivery continues making bounded progress");
+        }
+
+        MotionSession distanceGap=new MotionSession(route(line(),false,4,4,0,25),0,0);
+        distanceGap.update(5000);sample=distanceGap.update(10001);
+        check(sample.completed&&!sample.paused&&sample.activeMillis==6250,"distance limit may complete within capped background step");
+        near(sample.travelledMeters,25,0,"capped step truncates to distance limit without overshoot");
+        sample=distanceGap.update(10201);
+        near(sample.travelledMeters,25,0,"completed distance-limited route remains at endpoint");
+        sample=distanceGap.update(12401);
+        check(sample.completed&&sample.activeMillis==6250,"distance completion consumes only the required part of capped time");
+        near(sample.travelledMeters,25,0,"distance after a gap still truncates exactly");
+
+        RoutePlan varying=route(line(),false,1,9,0,0);
+        MotionSession background=new MotionSession(varying,0,77),control=new MotionSession(varying,0,77);
+        background.update(1000);background.update(20000);sample=background.update(20500);
+        control.update(5000);MotionSession.Sample expected=control.update(6500);
+        near(sample.travelledMeters,expected.travelledMeters,0,"random-speed integration counts only capped background time");
+        near(sample.speedMps,expected.speedMps,0,"random-speed phase follows bounded active time");
+        pointNear(sample.point,expected.point,0,"random-speed point matches equivalent uninterrupted active time");
+        sample=background.pause(100000);
+        check(sample.paused&&!sample.autoPaused&&sample.activeMillis==11500,"manual pause integrates its capped arrival step then persists");
+        MotionSession.Sample explicitPause=sample;
+        sample=background.update(200000);
+        near(sample.travelledMeters,explicitPause.travelledMeters,0,"manual pause does not auto-resume on subsequent updates");
+        check(sample.paused&&sample.activeMillis==11500,"manual pause excludes long wait from duration");
     }
 
     public static void main(String[] args) {

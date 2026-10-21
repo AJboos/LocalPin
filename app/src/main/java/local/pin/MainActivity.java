@@ -26,7 +26,7 @@ public final class MainActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService searchWorker=Executors.newSingleThreadExecutor();
     private MapView map;
-    private TextView selection,status,motionDetails;
+    private TextView selection,status,motionDetails,attribution;
     private EditText query;
     private Button start,search,locate,pause,staticModeButton,routeModeButton,undoRoute,clearRoute,configureRoute;
     private LinearLayout routeControls;
@@ -64,9 +64,9 @@ public final class MainActivity extends Activity {
         LinearLayout header=row();header.setPadding(dp(16),dp(6),dp(10),0);
         TextView title=text("点位",24,INK);title.setTypeface(null,Typeface.BOLD);header.addView(title,new LinearLayout.LayoutParams(0,dp(44),1));
         Button setup=button("首次设置",false);setup.setOnClickListener(v->setup());header.addView(setup);
-        Button runtime=button("运行",false);runtime.setOnClickListener(v->runtimeSettings());header.addView(runtime);
+        Button runtime=button("设置",false);runtime.setOnClickListener(v->appSettings());header.addView(runtime);
         Button info=button("说明",false);info.setOnClickListener(v->info());header.addView(info);root.addView(header);
-        TextView subtitle=text("地图选点 · 路线运动 · 2.2 预览",12,0xFF617268);subtitle.setPadding(dp(18),0,0,dp(6));root.addView(subtitle);
+        TextView subtitle=text("地图选点 · 路线运动 · 2.2.1 预览",12,0xFF617268);subtitle.setPadding(dp(18),0,0,dp(6));root.addView(subtitle);
         LinearLayout modes=row();modes.setPadding(dp(12),0,dp(12),dp(4));
         staticModeButton=button("静止选点",false);staticModeButton.setOnClickListener(v->changeMode(false));
         routeModeButton=button("路线模拟",false);routeModeButton.setOnClickListener(v->changeMode(true));
@@ -93,9 +93,9 @@ public final class MainActivity extends Activity {
         Button minus=button("－",false);minus.setContentDescription("缩小地图");minus.setOnClickListener(v->map.zoomBy(-1));tools.addView(minus);
         FrameLayout.LayoutParams toolParams=new FrameLayout.LayoutParams(dp(84),-2,Gravity.END|Gravity.TOP);toolParams.setMargins(0,dp(46),dp(8),0);frame.addView(tools,toolParams);
         root.addView(frame,new LinearLayout.LayoutParams(-1,0,1));
-        TextView attribution=text("© OpenStreetMap contributors  ·  地图数据许可",10,0xFF52695E);
+        attribution=text(map.source().attribution()+"  ·  地图来源与许可",10,0xFF52695E);
         attribution.setGravity(Gravity.END);attribution.setPadding(dp(8),dp(4),dp(8),dp(4));
-        attribution.setOnClickListener(v->openUrl("https://www.openstreetmap.org/copyright"));root.addView(attribution);
+        attribution.setOnClickListener(v->openUrl(map.source().attributionUrl()));root.addView(attribution);
         LinearLayout bottom=new LinearLayout(this);bottom.setOrientation(LinearLayout.VERTICAL);bottom.setPadding(dp(16),dp(8),dp(16),dp(10));
         selection=text("轻点教学楼或其他地点，选择目的地",16,INK);selection.setTypeface(null,Typeface.BOLD);selection.setMaxLines(2);bottom.addView(selection);
         status=text(MockService.status,12,0xFF617268);status.setPadding(0,dp(4),0,dp(6));status.setMinHeight(dp(30));bottom.addView(status);
@@ -173,7 +173,6 @@ public final class MainActivity extends Activity {
         if(running&&sample!=null){
             detail=age>5?"定位更新中断，运动数据可能已过期；请检查后台或停止后重试":
                 sample.completed?"运动已完成，正在驻留末点；点停止恢复系统定位":
-                sample.autoPaused?"后台更新中断，已暂停运动；点继续后从当前位置出发":
                 sample.paused?"运动已暂停，仍在模拟当前位置":"沿路线运动中；模拟位置标记保持不变";
             motionDetails.setText(String.format(Locale.ROOT,"累计 %s  ·  运动 %s  ·  当前 %.1f km/h",
                     formatDistance(sample.travelledMeters),formatDuration(sample.activeMillis),sample.speedMps*3.6));
@@ -188,7 +187,7 @@ public final class MainActivity extends Activity {
         motionDetails.setVisibility(sample!=null?View.VISIBLE:View.GONE);
         pause.setVisibility(running&&plan!=null?View.VISIBLE:View.GONE);
         pause.setEnabled(sample!=null&&!sample.completed);
-        pause.setText(sample!=null&&(sample.paused||sample.autoPaused)?"继续运动":"暂停运动");
+        pause.setText(sample!=null&&sample.paused?"继续运动":"暂停运动");
         start.setText(startPending?"正在启动":running?(sample!=null&&sample.completed?"末点驻留":"正在模拟"):(routeMode?"开始路线":"开始模拟"));
         start.setEnabled(!locked&&(routeMode?routeDraft.size()>=(routeDraft.closed?3:2):Double.isFinite(lat)));
         locate.setEnabled(!running&&!startPending&&locationCancel==null);
@@ -291,7 +290,7 @@ public final class MainActivity extends Activity {
     private void pauseOrResume(){
         MotionSession.Sample sample=MockService.motionSnapshot;
         if(!MockService.running||MockService.currentRoute==null||sample==null||sample.completed)return;
-        serviceCommand(sample.paused||sample.autoPaused?MockService.RESUME:MockService.PAUSE);
+        serviceCommand(sample.paused?MockService.RESUME:MockService.PAUSE);
     }
     private void serviceCommand(String action){
         try{startService(new Intent(this,MockService.class).setAction(action));}
@@ -425,6 +424,40 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("首次设置一次即可").setMessage("1. 在手机“关于手机”中连续点版本号 7 次，开启开发者选项。\n\n2. 在开发者选项中找到“选择模拟位置信息应用”，选择“点位”。\n\n3. 回到这里，在地图上点选位置，再点开始。\n\n模拟位置可能影响多个应用，目标应用也可能识别并拒绝模拟位置。")
             .setPositiveButton("打开开发者选项",(d,w)->{try{startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));}catch(ActivityNotFoundException e){toast("请到手机设置中搜索“开发者选项”");}}).setNegativeButton("知道了",null).show();
     }
+    private void appSettings(){
+        new AlertDialog.Builder(this).setTitle("设置").setItems(new String[]{"位置刷新频率","地图来源","后台运行设置"},(dialog,index)->{
+            if(index==0)runtimeSettings();else if(index==1)mapSettings();else backgroundSettings();
+        }).setNegativeButton("关闭",null).show();
+    }
+    private void mapSettings(){
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20),dp(8),dp(20),dp(8));
+        RadioGroup choices=new RadioGroup(this);
+        RadioButton osm=new RadioButton(this);osm.setId(View.generateViewId());osm.setText("OpenStreetMap · 无需 Key");choices.addView(osm);
+        RadioButton domestic=new RadioButton(this);domestic.setId(View.generateViewId());domestic.setText("天地图 · 国内服务，需要自己的 Key");choices.addView(domestic);content.addView(choices);
+        TextView notice=text("当前默认地图是 OpenStreetMap，不是谷歌地图。其加载和细节取决于网络与当地数据。\n\n天地图使用官方矢量底图及中文注记，需要在官方开发者平台申请服务 Key；是否可用及配额由服务商决定。本版不含高德或百度 SDK。",13,INK);content.addView(notice);
+        EditText key=new EditText(this);key.setSingleLine(true);key.setTextSize(14);key.setHint("粘贴自己的天地图服务 Key");
+        key.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        key.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);key.setText(MapPreferences.savedKey(this));content.addView(key);
+        TextView privacy=text("Key 仅保存在本机应用私有存储，不显示在核验信息或日志中。地图服务会收到 IP、浏览区域和服务 Key；切换地图源不会重置路线运动。",12,0xFF617268);content.addView(privacy);
+        choices.check(map.source().provider()==MapSource.TIANDITU?domestic.getId():osm.getId());
+        key.setVisibility(domestic.isChecked()?View.VISIBLE:View.GONE);
+        choices.setOnCheckedChangeListener((group,id)->key.setVisibility(domestic.isChecked()?View.VISIBLE:View.GONE));
+        ScrollView scroll=new ScrollView(this);scroll.addView(content);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("地图来源").setView(scroll)
+                .setPositiveButton("保存",null).setNegativeButton("取消",null)
+                .setNeutralButton("申请天地图 Key",(d,w)->openUrl(new MapSource(MapSource.TIANDITU,"").helpUrl())).create();
+        dialog.setOnShowListener(ignored->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            int provider=domestic.isChecked()?MapSource.TIANDITU:MapSource.OSM;
+            String secret=provider==MapSource.TIANDITU?key.getText().toString().trim():MapPreferences.savedKey(this);
+            try{
+                MapSource next=new MapSource(provider,secret);
+                if(!next.ready()){toast("请先填写自己的天地图 Key，或选择 OpenStreetMap");return;}
+                MapPreferences.save(this,provider,secret);map.reloadSource();
+                attribution.setText(map.source().attribution()+"  ·  地图来源与许可");dialog.dismiss();toast("地图来源已更新");
+            }catch(IllegalArgumentException invalid){toast("Key 格式不正确，请粘贴平台提供的完整字母数字 Key");}
+        }));dialog.show();
+    }
     private void runtimeSettings(){
         int[] intervals={200,500,1000};int selected=0;
         int current=MockService.preferredInterval(this);
@@ -449,6 +482,8 @@ public final class MainActivity extends Activity {
             report.append("\n成功发送批次：").append(MockService.successfulWrites);
             report.append("\n最近发送：").append(MockService.lastSuccessfulUpdate>0?(now-MockService.lastSuccessfulUpdate)+" 毫秒前":"尚未完成");
             report.append("\nCPU 保持：").append(MockService.cpuHeld?"已申请短时保持":"未持有");
+            if(MockService.recoveredPauseMillis>0)report.append("\n最近调度空档：").append(MockService.recoveredPauseMillis)
+                    .append(" 毫秒；已恢复发送，运动每次最多推进 5 秒");
             report.append("\nGPS 匹配回调：").append(MockService.gpsCallbacks).append(" 次");
             report.append("\n网络匹配回调：").append(MockService.networkCallbacks).append(" 次");
             report.append("\n回调是本机核验，不代表其他应用已采用。");
@@ -457,7 +492,7 @@ public final class MainActivity extends Activity {
                 report.append("\n路线累计：").append(formatDistance(motion.travelledMeters));
                 report.append("\n运动时长：").append(formatDuration(motion.activeMillis));
                 report.append("\n当前速度：").append(String.format(Locale.ROOT,"%.2f km/h",motion.speedMps*3.6));
-                report.append("\n运动状态：").append(motion.completed?"已完成，驻留末点":motion.autoPaused?"调度中断后自动暂停":motion.paused?"手动暂停":"运动中");
+                report.append("\n运动状态：").append(motion.completed?"已完成，驻留末点":motion.paused?"手动暂停":"运动中");
                 report.append("\n移动中的缓存可能落后于当前点，单次偏移不等于目标应用采用情况。");
             }
         }
@@ -500,6 +535,7 @@ public final class MainActivity extends Activity {
             report.append("\n\n匹配表示系统返回了选点；其他应用是否采用需另行核对。系统融合暂无位置不代表 GPS 失败。");
         }else if(MockService.running){report.append("\n精确位置权限不足，无法进行系统回读。");}
         else{report.append("\n开始模拟后可核对系统返回的位置；此时不读取真实位置。");}
+        report.append("\n\n地图来源：").append(map.source().label());
         String mapError=map.mapProblem();
         report.append("\n\n最近地图加载错误：").append(mapError.isEmpty()?"暂无记录":mapError);
         report.append("\n本次核验在手机本地完成，不上传结果。");
@@ -509,8 +545,8 @@ public final class MainActivity extends Activity {
             .setNegativeButton("重试地图",(d,w)->map.retryMap()).show();
     }
     private void info(){
-        new AlertDialog.Builder(this).setTitle("点位 2.2 预览 · 使用说明").setMessage("静止选点：轻点地图选择位置，运行中再次点选即可换点。\n\n路线模拟：按顺序轻点地图添加途经点，可撤销、清空，或在路线设置中选择闭环和速度。连线不会自动沿道路规划。运行期间停止编辑，可拖动和缩放查看。\n\n开放路线可按速度区间走完整程，或按总时长自动匀速。闭环可按累计距离或运动时长结束，也可指定距离和总时长自动计算匀速。时长不计暂停；后台更新中断会暂停运动，继续时不补跑。\n\n暂停和完成后仍持续模拟当前位置；关闭页面或划掉最近任务不主动停止。点击页面或通知中的停止才清理模拟位置源。修改刷新频率不重置路线进度。\n\n运行期间申请带超时的 CPU 保持，可能增加耗电，不能保证系统不会终止应用。\n\n地图来自 OpenStreetMap，服务能收到 IP 和浏览区域。搜索使用系统 Geocoder，搜索词可能发往服务商。\n\n本地保存地图视野、静止选点、路线草稿和设置，无广告、统计或账号；清除应用存储可删除。系统与地图采用 WGS84。\n\n本版保留模拟位置标记，不伪造其他应用的运动传感器。核验匹配只说明本程序的系统回读，不能证明其他应用采用。路线功能尚需分别进行真机验证。")
-            .setPositiveButton("知道了",null).setNeutralButton("系统核验",(d,w)->diagnostics()).setNegativeButton("地图政策",(d,w)->openUrl("https://operations.osmfoundation.org/policies/tiles/")).show();
+        new AlertDialog.Builder(this).setTitle("点位 2.2.1 预览 · 使用说明").setMessage("静止选点：轻点地图选择位置，运行中再次点选即可换点。\n\n路线模拟：按顺序轻点地图添加途经点，可撤销、清空，或在路线设置中选择闭环和速度。连线不会自动沿道路规划。运行期间停止编辑，可拖动和缩放查看。\n\n开放路线可按速度区间走完整程，或按总时长自动匀速。闭环可按累计距离或运动时长结束，也可指定距离和总时长自动计算匀速。时长不计手动暂停；调度恢复后自动继续，每次最多推进 5 秒，超出空档不补跑。实际完成时间可能延长。\n\n暂停和完成后仍持续模拟当前位置；关闭页面或划掉最近任务不主动停止。点击页面或通知中的停止才清理模拟位置源。修改刷新频率不重置路线进度。\n\n运行期间申请带超时的 CPU 保持，可能增加耗电，不能保证系统不会终止应用。\n\n地图可在设置中选择 OpenStreetMap 或使用自己的 Key 接入天地图；它们不是谷歌地图。服务能收到 IP、浏览区域和对应服务 Key。搜索仍使用系统 Geocoder，搜索词可能发往服务商。\n\n本地保存地图视野、静止选点、路线草稿、地图 Key 和设置，无广告、统计或账号；清除应用存储可删除。系统模拟位置采用 WGS84，天地图使用其官方墨卡托图层。\n\n本版保留模拟位置标记，不伪造其他应用的运动传感器。核验匹配只说明本程序的系统回读，不能证明其他应用采用。本轮后台修复与带 Key 的天地图仍待真机验证。")
+            .setPositiveButton("知道了",null).setNeutralButton("系统核验",(d,w)->diagnostics()).setNegativeButton("地图服务说明",(d,w)->openUrl(map.source().provider()==MapSource.OSM?map.source().helpUrl():"https://www.tianditu.gov.cn/about/service")).show();
     }
     private void openUrl(String url){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(ActivityNotFoundException e){toast("没有可打开链接的浏览器");}}
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}

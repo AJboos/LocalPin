@@ -6,8 +6,8 @@ android {
         applicationId 'local.pin'
         minSdk 31
         targetSdk 36
-        versionCode 6
-        versionName '2.2-preview'
+        versionCode 7
+        versionName '2.2.1-preview'
         manifestPlaceholders = [appLabel: '点位']
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

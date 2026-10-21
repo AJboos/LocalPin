@@ -38,13 +38,15 @@ $sources = @(
     'app/src/main/java/local/pin/MotionSession.java',
     'app/src/main/java/local/pin/SubmittedFixes.java',
     'app/src/main/java/local/pin/RouteEditor.java',
+    'app/src/main/java/local/pin/MapSource.java',
     'tests/MapMathTest.java',
     'tests/PositionCheckTest.java',
     'tests/SimulationEngineTest.java',
     'tests/RouteMotionTest.java',
     'tests/MotionEngineTest.java',
     'tests/SubmittedFixesTest.java',
-    'tests/RouteEditorTest.java'
+    'tests/RouteEditorTest.java',
+    'tests/MapSourceTest.java'
 ) | ForEach-Object {
     $source = Join-Path $PSScriptRoot $_
     if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
@@ -76,7 +78,7 @@ try {
     Invoke-CheckedNative -Executable $javac -NativeArguments $compileArguments -Step 'Pure JVM source compilation'
     foreach ($testMain in @('local.pin.MapMathTest', 'local.pin.PositionCheckTest', 'local.pin.SimulationEngineTest',
                           'local.pin.RouteMotionTest', 'local.pin.MotionEngineTest', 'local.pin.SubmittedFixesTest',
-                          'local.pin.RouteEditorTest')) {
+                          'local.pin.RouteEditorTest', 'local.pin.MapSourceTest')) {
         Invoke-CheckedNative -Executable $java -NativeArguments @('-ea', '-cp', $classes, $testMain) -Step $testMain
     }
     Write-Output ('All JVM test mains passed. Classes: ' + $classes)

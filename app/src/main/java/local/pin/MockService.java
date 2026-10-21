@@ -131,7 +131,6 @@ public final class MockService extends Service {
             lastError="";
             if(state.motion==null)status="正在发送所选位置";
             else if(state.motion.completed)status="路线运动已完成 · 正在停留终点";
-            else if(state.motion.autoPaused)status="检测到后台中断，运动已暂停 · 请点继续";
             else if(state.motion.paused)status="路线运动已暂停 · 正在保持当前位置";
             else status="正在沿路线运动";
         }

@@ -32,7 +32,7 @@ public final class MotionEngineTest {
     public static void main(String[] args){
         Clock clock=new Clock();Queue queue=new Queue();Backend backend=new Backend();
         SimulationEngine engine=new SimulationEngine(backend,clock,queue,s->{});
-        RoutePlan plan=plan(20);
+        RoutePlan plan=plan(100);
         engine.applyRoute(plan,200);
         check(engine.state().running&&engine.state().routePlan==plan,"route begins without a static target");
         check(backend.opens==1&&backend.listens==1&&backend.writes==1,"first route fix before updates");
@@ -46,9 +46,11 @@ public final class MotionEngineTest {
         check(engine.state().running&&engine.state().motion.paused,"pause keeps providers running");
         near(backend.point.speedMps,0,0,"paused fix has zero speed");
         int before=backend.writes;
+        clock.time+=12000;
         for(int i=0;i<10;i++)queue.fire(clock);
         near(engine.state().motion.travelledMeters,old.travelledMeters,1e-8,"paused position frozen");
         check(engine.state().motion.activeMillis==old.activeMillis,"pause excluded from active time");
+        check(engine.state().motion.paused&&!engine.state().motion.autoPaused,"long background gap never clears manual pause");
         check(backend.writes==before+10,"paused location still refreshes");
         engine.resumeMotion();queue.fire(clock);
         near(engine.state().motion.travelledMeters,2,1e-6,"resume has no catchup jump");
@@ -58,16 +60,26 @@ public final class MotionEngineTest {
         queue.fire(clock);
         near(engine.state().motion.travelledMeters,distance+2.5,1e-6,"new refresh interval uses elapsed time");
         distance=engine.state().motion.travelledMeters;
+        long activeBefore=engine.state().motion.activeMillis;
+        clock.time+=700;queue.fire(clock);
+        near(engine.state().motion.travelledMeters,distance+6,1e-6,"ordinary 1.2s background delay integrates normally");
+        check(engine.state().motion.activeMillis==activeBefore+1200&&!engine.state().motion.paused,"short background delay counts toward active time");
+        distance=engine.state().motion.travelledMeters;
+        activeBefore=engine.state().motion.activeMillis;
         clock.time+=9000;queue.fire(clock);
-        check(engine.state().motion.autoPaused&&engine.state().motion.paused,"long gap pauses motion");
-        near(engine.state().motion.travelledMeters,distance,1e-8,"long gap does not fast forward");
+        check(!engine.state().motion.autoPaused&&!engine.state().motion.paused,"long gap leaves route moving");
+        near(engine.state().motion.travelledMeters,distance+25,1e-8,"long gap advances by capped five-second movement");
+        check(engine.state().motion.activeMillis==activeBefore+5000,"long gap contributes no more than five seconds to active duration");
         check(engine.state().recoveredPauseMillis>=9000,"interruption remains visible");
-        engine.resumeMotion();
+        queue.fire(clock);
+        near(engine.state().motion.travelledMeters,distance+27.5,1e-6,"next scheduled update continues without resume action");
+        check(!engine.state().motion.paused&&engine.state().running,"background return does not require user interaction");
         for(int i=0;i<30&&!engine.state().motion.completed;i++)queue.fire(clock);
         check(engine.state().motion.completed&&engine.state().running&&backend.allocated,"completion holds final fix");
-        near(engine.state().motion.travelledMeters,20,1e-6,"distance end is exact");
+        near(engine.state().motion.travelledMeters,100,1e-6,"distance end is exact");
         near(backend.point.speedMps,0,0,"completed fix is stationary");
         long active=engine.state().motion.activeMillis;before=backend.writes;
+        check(active==20000,"distance completion excludes background time beyond the cap");
         queue.fire(clock);
         check(backend.writes==before+1&&engine.state().motion.activeMillis==active,"completed fix refreshes without further progress");
         SimulationEngine.Point fixed=new SimulationEngine.Point(1,2);engine.apply(fixed,200);
@@ -81,6 +93,24 @@ public final class MotionEngineTest {
         check("SecurityException".equals(engine.state().error),"route failure reported");
         before=backend.writes;engine.pauseMotion();engine.resumeMotion();engine.reconfigureInterval(1000);
         check(backend.writes==before&&queue.pending==null,"idle controls cannot revive failed session");
+        timedBackground();
         System.out.println("PASS: "+checks+" route-engine lifecycle assertions");
+    }
+    private static void timedBackground(){
+        Clock clock=new Clock();Queue queue=new Queue();Backend backend=new Backend();
+        SimulationEngine engine=new SimulationEngine(backend,clock,queue,s->{});
+        RoutePlan timed=new RoutePlan(Arrays.asList(new SimulationEngine.Point(0,0),new SimulationEngine.Point(0,1)),false,2,2,12000,0);
+        engine.applyRoute(timed,200);queue.fire(clock);
+        long active=engine.state().motion.activeMillis;double distance=engine.state().motion.travelledMeters;
+        clock.time+=20000;queue.fire(clock);
+        check(engine.state().running&&!engine.state().motion.paused&&!engine.state().motion.completed,"time-limited route stays active after background interruption");
+        check(engine.state().motion.activeMillis==active+5000,"interrupted wall time contributes only capped active duration");
+        near(engine.state().motion.travelledMeters,distance+10,1e-12,"timed route advances by bounded interruption step");
+        queue.fire(clock);
+        check(engine.state().motion.activeMillis==active+5200,"timed route resumes progress at next scheduled tick");
+        for(int i=0;i<60&&!engine.state().motion.completed;i++)queue.fire(clock);
+        check(engine.state().motion.completed&&engine.state().motion.activeMillis==12000,"time budget completes on bounded active time");
+        near(engine.state().motion.travelledMeters,24,1e-9,"timed background return retains exact integrated endpoint");
+        engine.stop();check(!backend.allocated&&queue.pending==null,"timed background session still cleans up on stop");
     }
 }

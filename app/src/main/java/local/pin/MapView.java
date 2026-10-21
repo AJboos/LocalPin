@@ -13,7 +13,7 @@ import java.util.Comparator;
 
 final class MapView extends View {
     interface Listener { void selected(double lat, double lon); }
-    private final TileStore tiles;
+    private TileStore tiles;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final float density;
     private final GestureDetector gestures;
@@ -67,7 +67,7 @@ final class MapView extends View {
     }
     void setListener(Listener value) { listener = value; }
     private double world() { return 256.0 * density * (1 << zoom); }
-    void center(double lat, double lon, int level) { centerLat=MapMath.clamp(lat,-85.05112878,85.05112878); centerLon=lon; zoom=(int)MapMath.clamp(level,2,19); invalidate(); }
+    void center(double lat, double lon, int level) { centerLat=MapMath.clamp(lat,-85.05112878,85.05112878); centerLon=lon; zoom=(int)MapMath.clamp(level,2,tiles.source.maxZoom()); invalidate(); }
     void real(double lat, double lon) { realLat=lat; realLon=lon; center(lat,lon,17); }
     void hideRealMarker(){realLat=Double.NaN;invalidate();}
     void select(double lat, double lon) { if(!routeMode){selectedLat=lat;selectedLon=lon;}if(listener!=null)listener.selected(lat,lon);invalidate(); }
@@ -85,7 +85,7 @@ final class MapView extends View {
     void setMotionPosition(SimulationEngine.Point point) { motionPosition=point;invalidate(); }
     void zoomBy(int delta) { zoomAt(delta, getWidth()/2f, getHeight()/2f); }
     private void zoomAt(int delta, float focusX, float focusY) {
-        int next=(int)MapMath.clamp(zoom+delta,2,19); if(next==zoom) return;
+        int next=(int)MapMath.clamp(zoom+delta,2,tiles.source.maxZoom()); if(next==zoom) return;
         double old=world(), fx=focusX-getWidth()/2.0, fy=focusY-getHeight()/2.0;
         double lon=MapMath.lon(MapMath.x(centerLon,old)+fx,old), lat=MapMath.lat(MapMath.y(centerLat,old)+fy,old);
         zoom=next; double size=world();
@@ -112,14 +112,17 @@ final class MapView extends View {
             if(ty<0||ty>=count) continue;
             String key=zoom+"/"+((tx%count+count)%count)+"/"+ty;
             RectF rect=new RectF((float)(tx*tile-left),(float)(ty*tile-top),(float)((tx+1)*tile-left),(float)((ty+1)*tile-top));
-            Bitmap bitmap=tiles.get(key);
+            Bitmap bitmap=tiles.get(key,0);
             if(bitmap!=null) canvas.drawBitmap(bitmap,null,rect,paint);
             else {
                 paint.setColor(0xFFCFDAD2); paint.setStrokeWidth(density); paint.setStyle(Paint.Style.STROKE); canvas.drawRect(rect,paint); paint.setStyle(Paint.Style.FILL);
                 paint.setColor(0xFF627269); paint.setTextSize(12*density);
-                canvas.drawText(tiles.failed(key)?"地图未加载 · 检查网络":"加载地图…",rect.left+12*density,rect.top+28*density,paint);
-                tiles.request(key,this::invalidate);
+                canvas.drawText(!tiles.source.ready()?"先到设置配置地图 Key":tiles.failed(key)?"地图未加载 · 查看核验":"加载地图…",rect.left+12*density,rect.top+28*density,paint);
             }
+            for(int layer=1;layer<tiles.source.layerCount();layer++){
+                Bitmap labels=tiles.get(key,layer);if(labels!=null)canvas.drawBitmap(labels,null,rect,paint);
+            }
+            tiles.request(key,this::invalidate);
         }
         if(Double.isFinite(realLat)) drawPoint(canvas,realLat,realLon,left,top,size,0xFF2479D8,false);
         if(routeMode) drawRoute(canvas,left,top,size);
@@ -253,6 +256,11 @@ final class MapView extends View {
     void resumeMap(){tiles.active=true;invalidate();}
     void pauseMap(){tiles.pause();}
     void close(){tiles.close();}
-    String mapProblem(){return tiles.lastError;}
+    String mapProblem(){return tiles.source.ready()?tiles.lastError:"天地图尚未配置 Key，请打开设置 → 地图来源";}
+    MapSource source(){return tiles.source;}
+    void reloadSource(){
+        tiles.close();tiles=new TileStore(getContext());
+        zoom=Math.min(zoom,tiles.source.maxZoom());previewZoom=Integer.MIN_VALUE;invalidate();
+    }
     void retryMap(){tiles.retryFailures();invalidate();}
 }
